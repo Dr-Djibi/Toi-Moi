@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Notre Univers D'Amour</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Modal d'authentification -->
+    <div id="authModal" class="auth-modal">
+        <div class="auth-container">
+            <div class="heart-loader-small"></div>
+            <h1>Un cœur, deux âmes, un amour éternel 💕</h1>
+            <p>Juste pour toi et moi. Seul ton nom pourra l'ouvrir.</p>
+            <input type="text" id="nameInput" placeholder="Votre nom..." maxlength="30" autocomplete="off">
+            <button id="submitBtn">Entrer</button>
+            <p class="error-message" id="errorMsg"></p>
+        </div>
+    </div>
+
+    <div id="loader" class="hidden">
+        <div class="heart-loader"></div>
+        <p>Remplissons ce moment de notre amour...</p>
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <p id="progressText" class="progress-text">0%</p>
+        </div>
+    </div>
+    <canvas id="loveCanvas"></canvas>
+
+    <!-- Audio controls -->
+    <div id="audioControls" class="audio-controls">
+        <button id="toggleMusic" class="music-btn" title="Activer/Désactiver la musique">🎵</button>
+    </div>
+    <audio id="backgroundMusic" loop>
+        <source src="Song/audio.mpeg" type="audio/mpeg">
+    </audio>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>    
+    <script src="script.js"></script>
+</body>
+</html>
