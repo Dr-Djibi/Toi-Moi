@@ -1,27 +1,12 @@
-# Stage de build
-FROM node:18-alpine AS builder
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copier les fichiers du projet
+# Copier tous les fichiers
 COPY . .
-
-# Stage final - serveur de production
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Installer http-server pour servir les fichiers statiques
-RUN npm install -g http-server
-
-# Copier les fichiers depuis le builder
-COPY --from=builder /app .
 
 # Exposer le port
 EXPOSE 8080
 
-# Variables d'environnement
-ENV PORT=8080
-
-# Commande pour démarrer le serveur
-CMD ["http-server", ".", "-p", "8080", "-c-1"]
+# Commande pour démarrer un serveur HTTP simple
+CMD ["python", "-m", "http.server", "8080"]

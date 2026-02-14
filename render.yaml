@@ -2,10 +2,7 @@ services:
   - type: web
     name: toi-moi
     runtime: docker
-    region: fra
+    region: closest
     plan: free
     dockerfile: ./Dockerfile
-    envVars:
-      - key: PORT
-        value: 8080
-    healthCheckPath: /index.html
+    port: 8080
