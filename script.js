@@ -179,9 +179,15 @@ emojis.forEach(emoji => {
 
 // Pool de matériaux pour messages
 const messageMaterials = {};
-const messages = ["Je t'aime", "Pour la vie", "Mon Coeur", "Unique", "Éternel"];
+const messages = [
+    "Je t'aime plus que tout",
+    "Pour la vie et au-delà",
+    "Mon cœur bat pour toi",
+    "Unique et précieux",
+    "Éternellement à toi"
+];
 messages.forEach(message => {
-    const texture = createTextTexture(message, 40, false);
+    const texture = createTextTexture(message, 48, false);
     messageMaterials[message] = new THREE.MeshBasicMaterial({ 
         map: texture, 
         transparent: true, 
