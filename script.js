@@ -155,17 +155,29 @@ function addElements() {
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0)]);
             mesh = new THREE.Points(geometry, emojiMaterials[randomEmoji]);
-        } else {
+        else {
             type = 'photo';
-            radius = 30 + Math.random() * 10;
+            radius = 25 + Math.random() * 15;
             const imageIndex = (i - counts.emojis) % images.length;
+            const imageUrl = images[imageIndex] + "?v=" + Date.now(); // Cache-buster
             const geometry = isMobile ? new THREE.PlaneGeometry(12, 16) : new THREE.PlaneGeometry(16, 21);
+
             mesh = new THREE.Mesh(geometry, fallbackMaterial.clone());
-            textureLoader.load(images[imageIndex], (t) => {
+
+            // On force le chargement de chaque image unique
+            textureLoader.load(imageUrl, (t) => {
                 t.encoding = THREE.sRGBEncoding;
-                mesh.material = new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide, transparent: true });
+                mesh.material = new THREE.MeshBasicMaterial({ 
+                    map: t, 
+                    side: THREE.DoubleSide, 
+                    transparent: true,
+                    alphaTest: 0.1 
+                });
+            }, undefined, (err) => {
+                console.error("Erreur chargement image:", imageUrl, err);
             });
         }
+
 
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
