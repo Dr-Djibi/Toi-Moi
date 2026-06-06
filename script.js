@@ -1,10 +1,14 @@
+// === DÉTECTION MOBILE ===
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window);
+
 // === SYSTÈME D'AUTHENTIFICATION ===
 let authenticated = false;
 let authorizedUsers = [];
 let particles = [];
-let scene, camera, renderer, controls;
+let particleHeart = null;
+let scene, camera, renderer, controls, composer;
 let loadedItems = 0;
-const totalItems = 170; // 110 emojis + 50 messages + 10 images
+const totalItems = isMobile ? 120 : 200; // Réduit pour mobile
 
 // Éléments DOM
 const authModal = document.getElementById('authModal');
@@ -81,27 +85,47 @@ function initThreeJS() {
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     renderer = new THREE.WebGLRenderer({ 
         canvas: document.getElementById('loveCanvas'), 
-        antialias: true,
+        antialias: !isMobile, // Désactivé sur mobile pour perf
         alpha: true,
-        precision: 'lowp'
+        precision: isMobile ? 'lowp' : 'mediump'
     });
 
     // Configuration du rendu
+    const pixelRatio = isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(pixelRatio);
     renderer.setClearColor(0x000000, 0);
     renderer.sortObjects = false;
 
+    // Post-processing
+    composer = new THREE.EffectComposer(renderer);
+    composer.setPixelRatio(pixelRatio);
+    composer.setSize(window.innerWidth, window.innerHeight);
+
+    const renderPass = new THREE.RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    // Bloom ajusté pour mobile
+    const bloomPass = new THREE.UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        isMobile ? 1.2 : 1.5, // strength
+        0.4, // radius
+        0.2  // threshold
+    );
+    bloomPass.exposure = 1.0;
+    composer.addPass(bloomPass);
+
     // Configuration de la caméra
-    camera.position.z = 60;
+    camera.position.z = isMobile ? 70 : 60; // Reculer un peu sur mobile
 
     // Contrôles OrbitControls
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.autoRotate = false; // Démarrera après authentification
+    controls.autoRotate = false;
     controls.autoRotateSpeed = 0.5;
     controls.enablePan = false;
+    controls.enableZoom = !isMobile; // Désactiver le zoom sur mobile pour éviter les conflits
     controls.minDistance = 40;
     controls.maxDistance = 100;
 
@@ -113,7 +137,7 @@ function initThreeJS() {
     directionalLight.position.set(1, 1, 1);
     scene.add(directionalLight);
     
-    console.log('✅ Three.js initialisé');
+    console.log(`✅ Three.js initialisé (Mobile: ${isMobile})`);
 }
 
 // === GESTION DES TEXTURES ET MATÉRIAUX ===
@@ -123,8 +147,15 @@ const textureLoader = new THREE.TextureLoader();
 function createTextTexture(text, fontSize = 60, isEmoji = false) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    canvas.width = 256;
-    canvas.height = 256;
+    
+    // Taille dynamique pour les messages longs
+    if (isEmoji) {
+        canvas.width = 128;
+        canvas.height = 128;
+    } else {
+        canvas.width = 1024; // Plus large pour les phrases
+        canvas.height = 128;
+    }
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -133,19 +164,23 @@ function createTextTexture(text, fontSize = 60, isEmoji = false) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = 'white';
-        ctx.fillText(text, 128, 128);
+        ctx.fillText(text, 64, 64);
     } else {
-        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ff4d6d';
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
-        ctx.shadowBlur = 15;
-        ctx.fillText(text, 128, 128);
         
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.lineWidth = 3;
-        ctx.strokeText(text, 128, 128);
+        // Glow effect pour lisibilité sur Bloom
+        ctx.shadowColor = 'rgba(255, 77, 109, 1)';
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+        
+        // Deuxième passe pour renforcer le contour
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
     }
     
     const texture = new THREE.CanvasTexture(canvas);
@@ -166,12 +201,12 @@ const images = [
 const emojiMaterials = {};
 const emojis = ["❤️", "💖", "🌹", "💋", "💍", "🥰", "✨", "💕", "💞"];
 emojis.forEach(emoji => {
-    const texture = createTextTexture(emoji, 100, true);
+    const texture = createTextTexture(emoji, 80, true);
     // Taille réduite des emojis pour éviter qu'ils soient trop grands
     emojiMaterials[emoji] = new THREE.PointsMaterial({ 
         map: texture, 
         transparent: true, 
-        size: 8,
+        size: 6,
         sizeAttenuation: true,
         alphaTest: 0.5
     });
@@ -179,9 +214,30 @@ emojis.forEach(emoji => {
 
 // Pool de matériaux pour messages
 const messageMaterials = {};
-const messages = ["Je t'aime", "Pour la vie", "Mon Coeur", "Unique", "Éternel"];
+const messages = [
+    "Mes yeux ne t'ont jamais vue, mais mon cœur te reconnaîtrait entre mille.",
+    "La distance n'est qu'un test pour voir jusqu'où l'amour peut voyager.",
+    "Un écran ne pourra jamais contenir toute l'immensité de ce que je ressens pour toi.",
+    "Chaque kilomètre qui nous sépare est une promesse de plus : nos retrouvailles seront éternelles.",
+    "L'amour, ce n'est pas se voir tous les jours, c'est se sentir partout, tout le temps.",
+    "On ne s'est jamais touchés, mais nos âmes sont déjà enlacées.",
+    "Le hasard n'existe pas, il n'y a que des rendez-vous que nous avions déjà fixés.",
+    "Ton âme est le seul endroit au monde où je me sens vraiment chez moi.",
+    "Je t'aimais déjà avant de te connaître, et je t'aimerai encore quand le temps se sera arrêté.",
+    "Chaque jour avec toi est une éternité que je voudrais recommencer.",
+    "L'absence de ta présence physique est comblée par l'omniprésence de ton souvenir.",
+    "Tu es mon plus beau 'bientôt'.",
+    "L'amour vrai ne connaît pas de frontières, seulement des horizons.",
+    "Nos cœurs battent à l'unisson, peu importe le fuseau horaire.",
+    "Chaque battement de mon cœur porte ton nom.",
+    "La distance sépare les corps, pas les cœurs.",
+    "Tu es ma plus belle pensée avant de m'endormir.",
+    "Loin des yeux, mais plus proche que jamais du cœur.",
+    "Je compte les jours jusqu'à ce que je n'aie plus à les compter.",
+    "Notre amour est plus fort que n'importe quelle distance."
+];
 messages.forEach(message => {
-    const texture = createTextTexture(message, 40, false);
+    const texture = createTextTexture(message, 32, false);
     messageMaterials[message] = new THREE.MeshBasicMaterial({
         map: texture,
         transparent: true,
@@ -198,89 +254,151 @@ const fallbackMaterial = new THREE.MeshBasicMaterial({
     side: THREE.DoubleSide 
 });
 
-// === CRÉATION DES ÉLÉMENTS EN ORBITE CYLINDRIQUE ===
+// === CRÉATION DES ÉLÉMENTS EN ORBITES ===
 function addElements() {
-    // Distribution aléatoire dans un volume sphérique pour éviter le regroupement
-    const maxRadius = 60;
     const createdParticles = [];
 
     for (let i = 0; i < totalItems; i++) {
-        // random spherical distribution
-        const u = Math.random();
-        const v = Math.random();
-        const theta = 2 * Math.PI * u;
-        const phi = Math.acos(2 * v - 1);
-        const r = Math.cbrt(Math.random()) * maxRadius; // cube root pour distribution uniforme du volume
-
-        const x = r * Math.sin(phi) * Math.cos(theta);
-        const y = r * Math.sin(phi) * Math.sin(theta);
-        const z = r * Math.cos(phi);
-
-        const pos = new THREE.Vector3(x, y, z);
-        const initialPosition = pos.clone();
+        let radius, type, mesh, material, userData;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.1 + Math.random() * 0.4;
+        const verticalPhase = Math.random() * Math.PI * 2;
+        const verticalAmplitude = 5 + Math.random() * 10;
         
-        if (i < 110) { 
-            // === EMOJIS ===
+        if (i < 120) { 
+            // === EMOJIS (Constellation lointaine) ===
+            type = 'emoji';
+            radius = 50 + Math.random() * 30;
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0)]);
-            const points = new THREE.Points(geometry, emojiMaterials[randomEmoji]);
-            points.position.copy(pos);
-            points.userData = { initialPosition, type: 'emoji' };
-            scene.add(points);
-            createdParticles.push(points);
-            updateLoadingProgress();
+            mesh = new THREE.Points(geometry, emojiMaterials[randomEmoji]);
         } 
-        else if (i < 160) { 
-            // === MESSAGES ===
+        else if (i < 180) { 
+            // === MESSAGES (Orbite intermédiaire) ===
+            type = 'text';
+            radius = 35 + Math.random() * 25;
             const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-            const geometry = new THREE.PlaneGeometry(10, 5);
-            const mesh = new THREE.Mesh(geometry, messageMaterials[randomMessage]);
-            mesh.position.copy(pos);
-            mesh.userData = { initialPosition, type: 'text' };
-            scene.add(mesh);
-            createdParticles.push(mesh);
-            updateLoadingProgress();
+            const geometry = new THREE.PlaneGeometry(16, 2); // Aspect ratio allongé pour les phrases
+            mesh = new THREE.Mesh(geometry, messageMaterials[randomMessage]);
         }
         else {
-            // === IMAGES === (10 images au total)
-            const imageIndex = (i - 160) % images.length;
+            // === IMAGES (Orbite proche et prioritaire) ===
+            type = 'photo';
+            radius = 20 + Math.random() * 15;
+            const imageIndex = (i - 180) % images.length;
             const imageUrl = images[imageIndex];
-            const geometry = new THREE.PlaneGeometry(12, 16);
-
+            const geometry = new THREE.PlaneGeometry(10, 13);
+            
+            // Créer un mesh temporaire avec le fallback en attendant le chargement
+            mesh = new THREE.Mesh(geometry, fallbackMaterial.clone());
+            
             textureLoader.load(
                 imageUrl,
                 (loadedTexture) => {
-                    try {
-                        loadedTexture.encoding = THREE.sRGBEncoding;
-                    } catch (e) {}
-                    const material = new THREE.MeshBasicMaterial({
+                    loadedTexture.encoding = THREE.sRGBEncoding;
+                    mesh.material = new THREE.MeshBasicMaterial({
                         map: loadedTexture,
                         side: THREE.DoubleSide,
                         transparent: true
                     });
-                    const mesh = new THREE.Mesh(geometry, material);
-                    mesh.position.copy(pos);
-                    mesh.userData = { initialPosition, type: 'photo' };
-                    scene.add(mesh);
-                    createdParticles.push(mesh);
-                    updateLoadingProgress();
                     console.log(`✅ Image chargée: ${imageUrl}`);
-                },
-                undefined,
-                (err) => {
-                    console.warn(`❌ Erreur image ${imageUrl}:`, err && err.message ? err.message : err);
-                    const mesh = new THREE.Mesh(geometry, fallbackMaterial.clone());
-                    mesh.position.copy(pos);
-                    mesh.userData = { initialPosition, type: 'fallback' };
-                    scene.add(mesh);
-                    createdParticles.push(mesh);
-                    updateLoadingProgress();
                 }
             );
         }
+
+        // Calcul position initiale
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const y = (Math.random() - 0.5) * 40;
+
+        mesh.position.set(x, y, z);
+        mesh.userData = { 
+            type, 
+            radius, 
+            angle, 
+            orbitSpeed: speed * (Math.random() > 0.5 ? 1 : -1) * 0.5,
+            verticalSpeed: 0.2 + Math.random() * 0.3,
+            verticalPhase,
+            verticalAmplitude,
+            initialY: y
+        };
+
+        scene.add(mesh);
+        createdParticles.push(mesh);
+        updateLoadingProgress();
     }
     
     return createdParticles;
+}
+
+// === AJOUT DU COEUR DE PARTICULES 3D ===
+function addParticleHeart() {
+    const particleCount = isMobile ? 2500 : 5000; // Optimisé pour mobile
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    
+    const color = new THREE.Color('#ff4d6d');
+    
+    for (let i = 0; i < particleCount; i++) {
+        // Paramètres pour la forme de cœur (Taubin)
+        const t = Math.random() * 2 * Math.PI;
+        
+        // Formule du cœur 2D
+        let x = 16 * Math.pow(Math.sin(t), 3);
+        let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+        
+        // Rendre 3D : on ajoute une composante Z et un peu de volume
+        // On crée une coque en variant Z selon la position X/Y pour donner du relief
+        const z = (Math.random() - 0.5) * 8 * Math.sin(t);
+        
+        // Un peu de bruit pour le côté "énergie"
+        const noise = 1 + (Math.random() - 0.5) * 0.1;
+        
+        positions[i * 3] = x * noise;
+        positions[i * 3 + 1] = y * noise;
+        positions[i * 3 + 2] = z * noise;
+        
+        // Variation légère de couleur
+        const colorVariation = Math.random() * 0.2;
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g + colorVariation;
+        colors[i * 3 + 2] = color.b + colorVariation;
+    }
+    
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    // Matériau de particule avec glow
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.2, 'rgba(255, 77, 109, 0.8)');
+    gradient.addColorStop(0.5, 'rgba(255, 77, 109, 0.3)');
+    gradient.addColorStop(1, 'rgba(255, 77, 109, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+    
+    const particleTexture = new THREE.CanvasTexture(canvas);
+    
+    const material = new THREE.PointsMaterial({
+        size: isMobile ? 1.5 : 1.2, // Particules un peu plus grandes sur mobile pour compenser la densité moindre
+        map: particleTexture,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        vertexColors: true,
+        sizeAttenuation: true
+    });
+    
+    particleHeart = new THREE.Points(geometry, material);
+    scene.add(particleHeart);
+    
+    console.log(`❤️ Cœur de particules 3D initialisé (${particleCount} particules)`);
+    return particleHeart;
 }
 
 // === AJOUT DE PARTICULES BLANCHES FLOTTANTES ===
@@ -329,19 +447,30 @@ function addWhiteParticles() {
     return whiteParticles;
 }
 
-// === GESTION DES CLICS ===
-document.addEventListener('click', (e) => {
-    if (!authenticated || e.target.id === 'toggleMusic') return;
+// === GESTION DES INTERACTIONS (CLIC/TOUCH) ===
+function createClickHeart(x, y) {
+    if (!authenticated) return;
     
     const heart = document.createElement('div');
     heart.classList.add('click-heart');
     heart.innerHTML = '❤️';
-    heart.style.left = e.clientX + 'px';
-    heart.style.top = e.clientY + 'px';
+    heart.style.left = x + 'px';
+    heart.style.top = y + 'px';
     document.body.appendChild(heart);
     
     setTimeout(() => heart.remove(), 1500);
+}
+
+document.addEventListener('mousedown', (e) => {
+    if (e.target.closest('#toggleMusic') || e.target.closest('.auth-container')) return;
+    createClickHeart(e.clientX, e.clientY);
 });
+
+document.addEventListener('touchstart', (e) => {
+    if (e.target.closest('#toggleMusic') || e.target.closest('.auth-container')) return;
+    const touch = e.touches[0];
+    createClickHeart(touch.clientX, touch.clientY);
+}, { passive: true });
 
 // === PROGRESSION DU CHARGEMENT ===
 function updateLoadingProgress() {
@@ -398,22 +527,51 @@ function animate() {
     const delta = clock.getDelta();
     const time = clock.getElapsedTime();
     
-    // Animation des particules
+    // Animation des éléments en orbite
     particles.forEach(obj => {
-        if (!obj.userData?.initialPosition) return;
+        if (!obj.userData?.radius) return;
         
-        const { initialPosition } = obj.userData;
-        const speed = obj.userData.type === 'photo' ? 0.3 : 0.7;
-        const amplitude = obj.userData.type === 'photo' ? 0.8 : 1.5;
+        const data = obj.userData;
         
-        // Oscillation naturelle
-        obj.position.x = initialPosition.x + Math.sin(time * speed + initialPosition.y) * amplitude;
-        obj.position.y = initialPosition.y + Math.cos(time * speed * 0.7 + initialPosition.z) * amplitude * 0.7;
-        obj.position.z = initialPosition.z + Math.sin(time * speed * 0.5 + initialPosition.x) * amplitude * 0.5;
+        // Mise à jour de l'angle d'orbite
+        data.angle += data.orbitSpeed * delta;
         
-        // === BILLBOARD RENDERING - Toujours face à la caméra ===
-        obj.quaternion.copy(camera.quaternion);
+        // Calcul de la nouvelle position (Orbite Circulaire)
+        const x = Math.cos(data.angle) * data.radius;
+        const z = Math.sin(data.angle) * data.radius;
+        
+        // Oscillation verticale douce
+        const verticalOffset = Math.sin(time * data.verticalSpeed + data.verticalPhase) * data.verticalAmplitude;
+        const y = data.initialY + verticalOffset;
+        
+        obj.position.set(x, y, z);
+        
+        // === BILLBOARD RENDERING PERFECTO ===
+        // Utiliser lookAt pour que les plans fassent toujours face à la caméra
+        // Mais pour les points (emojis), Three.js gère déjà ça si on ne change pas la rotation
+        if (data.type !== 'emoji') {
+            obj.quaternion.copy(camera.quaternion);
+        }
     });
+
+    // Animation du cœur de particules (Battement)
+    if (particleHeart) {
+        // Double battement réaliste : deux pics de sinus décalés
+        const speed = 4;
+        const beat1 = Math.pow(Math.sin(time * speed), 10) * 0.15;
+        const beat2 = Math.pow(Math.sin(time * speed + 0.4), 10) * 0.08;
+        const pulse = beat1 + beat2;
+        
+        const baseScale = 1.0;
+        const currentScale = baseScale + pulse;
+        particleHeart.scale.set(currentScale, currentScale, currentScale);
+        
+        // Faire varier la taille des particules et l'opacité pour le glow
+        particleHeart.material.size = 1.2 + pulse * 3;
+        
+        // Rotation lente du cœur sur lui-même
+        particleHeart.rotation.y = time * 0.2;
+    }
 
     // Animation des particules blanches
     if (whiteParticles) {
@@ -436,7 +594,7 @@ function animate() {
     }
 
     controls.update();
-    renderer.render(scene, camera);
+    composer.render();
 }
 
 // === GESTION AUDIO ===
@@ -508,6 +666,9 @@ function initializeScene() {
     // Ajouter les éléments
     particles = addElements();
     
+    // Ajouter le cœur de particules central
+    addParticleHeart();
+    
     // Ajouter les particules blanches flottantes
     whiteParticles = addWhiteParticles();
     
@@ -517,27 +678,16 @@ function initializeScene() {
 
 // === ÉVÉNEMENTS FENÊTRE ===
 window.addEventListener('resize', () => {
-    if (!camera || !renderer) return;
+    if (!camera || !renderer || !composer) return;
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// === OPTIMISATION MOBILE ===
-if ('ontouchstart' in window) {
-    console.log('📱 Mode tactile détecté');
-    document.addEventListener('DOMContentLoaded', () => {
-        if (controls) {
-            controls.autoRotate = false;
-            controls.enableZoom = false;
-        }
-    });
-    
-    document.addEventListener('touchmove', (e) => {
-        if (e.touches.length > 1) {
-            e.preventDefault();
-        }
-    }, { passive: false });
-} else {
-    console.log('🖥️ Mode bureau');
-}
+// Prévenir le zoom par double-tap sur iOS
+document.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) {
+        e.preventDefault();
+    }
+}, { passive: false });
