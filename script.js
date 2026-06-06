@@ -108,7 +108,7 @@ function initThreeJS() {
     // Bloom ajusté pour mobile
     const bloomPass = new THREE.UnrealBloomPass(
         new THREE.Vector2(window.innerWidth, window.innerHeight),
-        isMobile ? 1.2 : 1.5, // strength
+        isMobile ? 1.0 : 1.5, // strength réduit pour mobile
         0.4, // radius
         0.2  // threshold
     );
@@ -116,7 +116,7 @@ function initThreeJS() {
     composer.addPass(bloomPass);
 
     // Configuration de la caméra
-    camera.position.z = isMobile ? 70 : 60; // Reculer un peu sur mobile
+    camera.position.z = isMobile ? 80 : 60; // Reculer un peu sur mobile
 
     // Contrôles OrbitControls
     controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -127,7 +127,7 @@ function initThreeJS() {
     controls.enablePan = false;
     controls.enableZoom = !isMobile; // Désactiver le zoom sur mobile pour éviter les conflits
     controls.minDistance = 40;
-    controls.maxDistance = 100;
+    controls.maxDistance = 120;
 
     // Lumières
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -148,13 +148,13 @@ function createTextTexture(text, fontSize = 60, isEmoji = false) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Taille dynamique pour les messages longs
+    // Taille plus petite sur mobile pour économiser la mémoire GPU
     if (isEmoji) {
         canvas.width = 128;
         canvas.height = 128;
     } else {
-        canvas.width = 1024; // Plus large pour les phrases
-        canvas.height = 128;
+        canvas.width = isMobile ? 512 : 1024; 
+        canvas.height = isMobile ? 64 : 128;
     }
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -166,20 +166,19 @@ function createTextTexture(text, fontSize = 60, isEmoji = false) {
         ctx.fillStyle = 'white';
         ctx.fillText(text, 64, 64);
     } else {
-        ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
+        const adjustedFontSize = isMobile ? fontSize / 2 : fontSize;
+        ctx.font = `bold ${adjustedFontSize}px "Segoe UI", Arial, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
-        // Glow effect pour lisibilité sur Bloom
         ctx.shadowColor = 'rgba(255, 77, 109, 1)';
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = isMobile ? 5 : 15;
         ctx.fillStyle = '#ffffff';
         ctx.fillText(text, canvas.width / 2, canvas.height / 2);
         
-        // Deuxième passe pour renforcer le contour
         ctx.shadowBlur = 0;
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = isMobile ? 1 : 2;
         ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
     }
     
@@ -202,7 +201,6 @@ const emojiMaterials = {};
 const emojis = ["❤️", "💖", "🌹", "💋", "💍", "🥰", "✨", "💕", "💞"];
 emojis.forEach(emoji => {
     const texture = createTextTexture(emoji, 80, true);
-    // Taille réduite des emojis pour éviter qu'ils soient trop grands
     emojiMaterials[emoji] = new THREE.PointsMaterial({ 
         map: texture, 
         transparent: true, 
@@ -246,7 +244,6 @@ messages.forEach(message => {
     });
 });
 
-// Fallback si les images ne chargent pas
 const fallbackTexture = createTextTexture("❤", 80, true);
 const fallbackMaterial = new THREE.MeshBasicMaterial({ 
     map: fallbackTexture, 
@@ -257,39 +254,42 @@ const fallbackMaterial = new THREE.MeshBasicMaterial({
 // === CRÉATION DES ÉLÉMENTS EN ORBITES ===
 function addElements() {
     const createdParticles = [];
+    
+    // Répartition équilibrée pour mobile et desktop
+    const counts = isMobile ? 
+        { emojis: 60, texts: 40, photos: 20 } : 
+        { emojis: 100, texts: 60, photos: 40 };
+    
+    const totalCount = counts.emojis + counts.texts + counts.photos;
 
-    for (let i = 0; i < totalItems; i++) {
-        let radius, type, mesh, material, userData;
+    for (let i = 0; i < totalCount; i++) {
+        let radius, type, mesh;
         const angle = Math.random() * Math.PI * 2;
         const speed = 0.1 + Math.random() * 0.4;
         const verticalPhase = Math.random() * Math.PI * 2;
         const verticalAmplitude = 5 + Math.random() * 10;
         
-        if (i < 120) { 
-            // === EMOJIS (Constellation lointaine) ===
+        if (i < counts.emojis) { 
             type = 'emoji';
             radius = 50 + Math.random() * 30;
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0)]);
             mesh = new THREE.Points(geometry, emojiMaterials[randomEmoji]);
         } 
-        else if (i < 180) { 
-            // === MESSAGES (Orbite intermédiaire) ===
+        else if (i < counts.emojis + counts.texts) { 
             type = 'text';
             radius = 35 + Math.random() * 25;
             const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-            const geometry = new THREE.PlaneGeometry(16, 2); // Aspect ratio allongé pour les phrases
+            const geometry = isMobile ? new THREE.PlaneGeometry(12, 1.5) : new THREE.PlaneGeometry(16, 2);
             mesh = new THREE.Mesh(geometry, messageMaterials[randomMessage]);
         }
         else {
-            // === IMAGES (Orbite proche et prioritaire) ===
             type = 'photo';
             radius = 20 + Math.random() * 15;
-            const imageIndex = (i - 180) % images.length;
+            const imageIndex = (i - (counts.emojis + counts.texts)) % images.length;
             const imageUrl = images[imageIndex];
-            const geometry = new THREE.PlaneGeometry(10, 13);
+            const geometry = isMobile ? new THREE.PlaneGeometry(8, 10.4) : new THREE.PlaneGeometry(10, 13);
             
-            // Créer un mesh temporaire avec le fallback en attendant le chargement
             mesh = new THREE.Mesh(geometry, fallbackMaterial.clone());
             
             textureLoader.load(
@@ -301,12 +301,10 @@ function addElements() {
                         side: THREE.DoubleSide,
                         transparent: true
                     });
-                    console.log(`✅ Image chargée: ${imageUrl}`);
                 }
             );
         }
 
-        // Calcul position initiale
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
         const y = (Math.random() - 0.5) * 40;
@@ -316,8 +314,8 @@ function addElements() {
             type, 
             radius, 
             angle, 
-            orbitSpeed: speed * (Math.random() > 0.5 ? 1 : -1) * 0.5,
-            verticalSpeed: 0.2 + Math.random() * 0.3,
+            orbitSpeed: speed * (Math.random() > 0.5 ? 1 : -1) * 0.4,
+            verticalSpeed: 0.1 + Math.random() * 0.2,
             verticalPhase,
             verticalAmplitude,
             initialY: y
@@ -325,41 +323,30 @@ function addElements() {
 
         scene.add(mesh);
         createdParticles.push(mesh);
-        updateLoadingProgress();
+        updateLoadingProgress(totalCount);
     }
     
     return createdParticles;
 }
 
-// === AJOUT DU COEUR DE PARTICULES 3D ===
 function addParticleHeart() {
-    const particleCount = isMobile ? 2500 : 5000; // Optimisé pour mobile
+    const particleCount = isMobile ? 2500 : 5000;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
-    
     const color = new THREE.Color('#ff4d6d');
     
     for (let i = 0; i < particleCount; i++) {
-        // Paramètres pour la forme de cœur (Taubin)
         const t = Math.random() * 2 * Math.PI;
-        
-        // Formule du cœur 2D
         let x = 16 * Math.pow(Math.sin(t), 3);
         let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-        
-        // Rendre 3D : on ajoute une composante Z et un peu de volume
-        // On crée une coque en variant Z selon la position X/Y pour donner du relief
         const z = (Math.random() - 0.5) * 8 * Math.sin(t);
-        
-        // Un peu de bruit pour le côté "énergie"
         const noise = 1 + (Math.random() - 0.5) * 0.1;
         
         positions[i * 3] = x * noise;
         positions[i * 3 + 1] = y * noise;
         positions[i * 3 + 2] = z * noise;
         
-        // Variation légère de couleur
         const colorVariation = Math.random() * 0.2;
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g + colorVariation;
@@ -369,7 +356,6 @@ function addParticleHeart() {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
-    // Matériau de particule avec glow
     const canvas = document.createElement('canvas');
     canvas.width = 64;
     canvas.height = 64;
@@ -383,9 +369,8 @@ function addParticleHeart() {
     ctx.fillRect(0, 0, 64, 64);
     
     const particleTexture = new THREE.CanvasTexture(canvas);
-    
     const material = new THREE.PointsMaterial({
-        size: isMobile ? 1.5 : 1.2, // Particules un peu plus grandes sur mobile pour compenser la densité moindre
+        size: isMobile ? 1.5 : 1.2,
         map: particleTexture,
         transparent: true,
         blending: THREE.AdditiveBlending,
@@ -396,37 +381,28 @@ function addParticleHeart() {
     
     particleHeart = new THREE.Points(geometry, material);
     scene.add(particleHeart);
-    
-    console.log(`❤️ Cœur de particules 3D initialisé (${particleCount} particules)`);
     return particleHeart;
 }
 
-// === AJOUT DE PARTICULES BLANCHES FLOTTANTES ===
 function addWhiteParticles() {
     const particleGeometry = new THREE.BufferGeometry();
-    const particleCount = 80;
+    const particleCount = isMobile ? 40 : 80;
     const positions = new Float32Array(particleCount * 3);
-    
     for (let i = 0; i < particleCount * 3; i += 3) {
-        positions[i] = (Math.random() - 0.5) * 120;      // x
-        positions[i + 1] = (Math.random() - 0.5) * 120;  // y
-        positions[i + 2] = (Math.random() - 0.5) * 120;  // z
+        positions[i] = (Math.random() - 0.5) * 120;
+        positions[i + 1] = (Math.random() - 0.5) * 120;
+        positions[i + 2] = (Math.random() - 0.5) * 120;
     }
-    
     particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     
-    // Créer un canvas pour la texture des particules
     const canvas = document.createElement('canvas');
     canvas.width = 64;
     canvas.height = 64;
     const ctx = canvas.getContext('2d');
-    
-    // Dessiner un point blanc avec dégradé
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
     gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 64, 64);
     
@@ -439,25 +415,19 @@ function addWhiteParticles() {
         color: 0xffffff,
         opacity: 0.8
     });
-    
-    const whiteParticles = new THREE.Points(particleGeometry, particleMaterial);
-    whiteParticles.userData = { isWhiteParticles: true };
-    scene.add(whiteParticles);
-    
-    return whiteParticles;
+    const wp = new THREE.Points(particleGeometry, particleMaterial);
+    scene.add(wp);
+    return wp;
 }
 
-// === GESTION DES INTERACTIONS (CLIC/TOUCH) ===
 function createClickHeart(x, y) {
     if (!authenticated) return;
-    
     const heart = document.createElement('div');
     heart.classList.add('click-heart');
     heart.innerHTML = '❤️';
     heart.style.left = x + 'px';
     heart.style.top = y + 'px';
     document.body.appendChild(heart);
-    
     setTimeout(() => heart.remove(), 1500);
 }
 
@@ -472,124 +442,65 @@ document.addEventListener('touchstart', (e) => {
     createClickHeart(touch.clientX, touch.clientY);
 }, { passive: true });
 
-// === PROGRESSION DU CHARGEMENT ===
-function updateLoadingProgress() {
+function updateLoadingProgress(targetTotal) {
     loadedItems++;
-    const progress = Math.round((loadedItems / totalItems) * 100);
-    
-    // Mettre à jour la barre de progression
+    const actualTotal = targetTotal || totalItems;
+    const progress = Math.min(Math.round((loadedItems / actualTotal) * 100), 100);
     const progressFill = document.getElementById('progressFill');
     const progressText = document.getElementById('progressText');
-    
-    if (progressFill) {
-        progressFill.style.width = progress + '%';
-    }
-    if (progressText) {
-        progressText.textContent = progress + '%';
-    }
-    
-    console.log(`Chargement: ${progress}%`);
-
-    // Attendre que toutes les ressources soient chargées avant de masquer le loader
-    if (loadedItems >= totalItems) {
-        hideLoader();
-    }
+    if (progressFill) progressFill.style.width = progress + '%';
+    if (progressText) progressText.textContent = progress + '%';
+    if (loadedItems >= actualTotal) hideLoader();
 }
 
-// Masquer le loader
 function hideLoader() {
     const loader = document.getElementById('loader');
     const canvas = document.getElementById('loveCanvas');
-    
     if (!loader || loader.classList.contains('hidden')) return;
-    
     setTimeout(() => {
         loader.style.opacity = '0';
         canvas.classList.add('loaded');
-        
         setTimeout(() => {
             loader.classList.add('hidden');
             controls.autoRotate = true;
-            console.log('🎉 Scène prête!');
         }, 1000);
     }, 500);
 }
 
-// === ANIMATION PRINCIPALE ===
 const clock = new THREE.Clock();
-let whiteParticles = null;
-
 function animate() {
     requestAnimationFrame(animate);
-    
-    if (!renderer || !scene || !camera) return;
-    
+    if (!renderer || !scene || !camera || !composer) return;
     const delta = clock.getDelta();
     const time = clock.getElapsedTime();
     
-    // Animation des éléments en orbite
     particles.forEach(obj => {
         if (!obj.userData?.radius) return;
-        
         const data = obj.userData;
-        
-        // Mise à jour de l'angle d'orbite
         data.angle += data.orbitSpeed * delta;
-        
-        // Calcul de la nouvelle position (Orbite Circulaire)
         const x = Math.cos(data.angle) * data.radius;
         const z = Math.sin(data.angle) * data.radius;
-        
-        // Oscillation verticale douce
         const verticalOffset = Math.sin(time * data.verticalSpeed + data.verticalPhase) * data.verticalAmplitude;
         const y = data.initialY + verticalOffset;
-        
         obj.position.set(x, y, z);
-        
-        // === BILLBOARD RENDERING PERFECTO ===
-        // Utiliser lookAt pour que les plans fassent toujours face à la caméra
-        // Mais pour les points (emojis), Three.js gère déjà ça si on ne change pas la rotation
-        if (data.type !== 'emoji') {
-            obj.quaternion.copy(camera.quaternion);
-        }
+        if (data.type !== 'emoji') obj.quaternion.copy(camera.quaternion);
     });
 
-    // Animation du cœur de particules (Battement)
     if (particleHeart) {
-        // Double battement réaliste : deux pics de sinus décalés
         const speed = 4;
-        const beat1 = Math.pow(Math.sin(time * speed), 10) * 0.15;
-        const beat2 = Math.pow(Math.sin(time * speed + 0.4), 10) * 0.08;
-        const pulse = beat1 + beat2;
-        
-        const baseScale = 1.0;
-        const currentScale = baseScale + pulse;
+        const beat = Math.pow(Math.sin(time * speed), 10) * 0.15 + Math.pow(Math.sin(time * speed + 0.4), 10) * 0.08;
+        const currentScale = 1.0 + beat;
         particleHeart.scale.set(currentScale, currentScale, currentScale);
-        
-        // Faire varier la taille des particules et l'opacité pour le glow
-        particleHeart.material.size = 1.2 + pulse * 3;
-        
-        // Rotation lente du cœur sur lui-même
+        particleHeart.material.size = (isMobile ? 1.5 : 1.2) + beat * 3;
         particleHeart.rotation.y = time * 0.2;
     }
 
-    // Animation des particules blanches
     if (whiteParticles) {
-        const positions = whiteParticles.geometry.attributes.position.array;
-        
-        for (let i = 0; i < positions.length; i += 3) {
-            const x0 = positions[i];
-            const y0 = positions[i + 1];
-            const z0 = positions[i + 2];
-            
-            const index = i / 3;
-            
-            // Oscillation douce des particules blanches
-            positions[i] = x0 + Math.sin(time * 0.5 + index) * 0.5;
-            positions[i + 1] = y0 + Math.cos(time * 0.4 + index) * 0.5;
-            positions[i + 2] = z0 + Math.sin(time * 0.3 + index) * 0.3;
+        const pos = whiteParticles.geometry.attributes.position.array;
+        for (let i = 0; i < pos.length; i += 3) {
+            pos[i] += Math.sin(time * 0.5 + i) * 0.01;
+            pos[i+1] += Math.cos(time * 0.4 + i) * 0.01;
         }
-        
         whiteParticles.geometry.attributes.position.needsUpdate = true;
     }
 
@@ -597,86 +508,46 @@ function animate() {
     composer.render();
 }
 
-// === GESTION AUDIO ===
 function setupAudio() {
     const backgroundMusic = document.getElementById('backgroundMusic');
     const toggleMusic = document.getElementById('toggleMusic');
     let musicPlaying = false;
-
     toggleMusic.addEventListener('click', (e) => {
         e.stopPropagation();
-        
         if (musicPlaying) {
             backgroundMusic.pause();
             toggleMusic.classList.remove('playing');
             toggleMusic.textContent = '🔇';
             musicPlaying = false;
         } else {
-            backgroundMusic.play().catch(err => {
-                console.warn('Erreur lecture audio:', err.message);
-            });
+            backgroundMusic.play().catch(err => console.warn(err.message));
             toggleMusic.classList.add('playing');
             toggleMusic.textContent = '🎵';
             musicPlaying = true;
         }
     });
-
-    // Autoplay au premier clic
     document.addEventListener('click', () => {
         if (!musicPlaying && authenticated) {
-            backgroundMusic.play().catch(err => console.log('Autoplay bloqué:', err.message));
+            backgroundMusic.play().catch(err => console.log(err.message));
             musicPlaying = true;
         }
     }, { once: true });
 }
 
-// === INITIALISATION AU CHARGEMENT ===
 window.addEventListener('load', async () => {
-    console.log('🚀 Démarrage du site...');
-    
-    // Charger les utilisateurs
     await loadAuthorizedUsers();
-    
-    // Focus sur le champ de nom
     nameInput.focus();
-    
-    // Setup audio
     setupAudio();
-    
-    // Événements authentification
-    submitBtn.addEventListener('click', checkName);
-    nameInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            checkName();
-        }
-    });
-    
-    // Masquer les contrôles audio
-    document.getElementById('audioControls').style.display = 'none';
 });
 
-// Initialiser la scène après authentification
 function initializeScene() {
-    console.log('🎬 Initialisation de la scène 3D...');
-    
-    // Initialiser Three.js
     initThreeJS();
-    
-    // Ajouter les éléments
     particles = addElements();
-    
-    // Ajouter le cœur de particules central
     addParticleHeart();
-    
-    // Ajouter les particules blanches flottantes
     whiteParticles = addWhiteParticles();
-    
-    // Démarrer l'animation
     animate();
 }
 
-// === ÉVÉNEMENTS FENÊTRE ===
 window.addEventListener('resize', () => {
     if (!camera || !renderer || !composer) return;
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -685,9 +556,6 @@ window.addEventListener('resize', () => {
     composer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Prévenir le zoom par double-tap sur iOS
 document.addEventListener('touchstart', (e) => {
-    if (e.touches.length > 1) {
-        e.preventDefault();
-    }
+    if (e.touches.length > 1) e.preventDefault();
 }, { passive: false });
