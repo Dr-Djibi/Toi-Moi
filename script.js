@@ -155,7 +155,7 @@ function addElements() {
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0)]);
             mesh = new THREE.Points(geometry, emojiMaterials[randomEmoji]);
-        else {
+        } else {
             type = 'photo';
             radius = 25 + Math.random() * 15;
             const imageIndex = (i - counts.emojis) % images.length;
